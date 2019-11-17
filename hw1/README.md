@@ -10,8 +10,8 @@ Python 3.x required.
 
 Fill config as example below:
 
-REPORT_SIZE=1000
-REPORT_DIR=./reports
+REPORT_SIZE=1000  
+REPORT_DIR=./reports  
 LOG_DIR=./log  
 
 Run:
@@ -37,4 +37,5 @@ python test_log_analyzer.py
 
 ## License
 
-TODO: Write license
+Copyright © 2019 [Anzor Berezgov](https://github.com/anzber).<br />
+This project is [GNU 3](https://github.com/anzber/Python_adv_course/blob/master/hw1/LICENSE) licensed.
