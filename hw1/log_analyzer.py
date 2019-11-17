@@ -26,7 +26,8 @@ config = {
     "REPORT_SIZE": 1000,
     "REPORT_DIR": "./reports",
     "LOG_DIR": "./log",
-    "FORCE": False
+    "FORCE": False,
+    "SELF_LOG_DIR": "./"
 }
 
 
@@ -80,7 +81,10 @@ def xreadlines(log_path):
 
 
 def main(conf):
-    configure_logging('log_analyzer.log')
+    if not os.path.isdir(conf['SELF_LOG_DIR']):
+        print(f"Self log directory doesn't exist {conf['SELF_LOG_DIR']}")
+    self_log_path = os.path.join(conf['SELF_LOG_DIR'],'log_analyzer.log')
+    configure_logging(self_log_path)
     try:
         start_time = time.time()
         if not os.path.isdir(conf['LOG_DIR']):

@@ -6,7 +6,12 @@ import os
 class SimplisticTest(unittest.TestCase):
 
     def test(self):
-        conf = {'LOG_DIR': './test/log', 'REPORT_DIR': './test/report', 'FORCE': True, 'REPORT_SIZE': 100}
+        conf = {'LOG_DIR': './test/log', 
+                'REPORT_DIR': './test/report', 
+                'FORCE': True, 
+                'REPORT_SIZE': 100, 
+                'SELF_LOG_DIR': './'
+               }
         f = open(os.path.join(conf['REPORT_DIR'], 'report_target.html'), 'r', encoding='utf-8')
         target = f.read()
         f.close()
