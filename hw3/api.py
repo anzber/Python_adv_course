@@ -8,7 +8,7 @@ import logging
 import hashlib
 import uuid
 from optparse import OptionParser
-from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -37,35 +37,43 @@ GENDERS = {
 
 
 class CharField(object):
-    pass
+    def __init__(self, required=False, nullable=False):
+        print("I'm CharField")
 
 
 class ArgumentsField(object):
-    pass
+    def __init__(self, required=False, nullable=False):
+        print("I'm ArgumentsField")
 
 
 class EmailField(CharField):
-    pass
+    def __init__(self, required=False, nullable=False):
+        print("I'm EmailField")
 
 
 class PhoneField(object):
-    pass
+    def __init__(self, required=False, nullable=False):
+        print("I'm PhoneField")
 
 
 class DateField(object):
-    pass
+    def __init__(self, required=False, nullable=False):
+        print("I'm DateField")
 
 
 class BirthDayField(object):
-    pass
+    def __init__(self, required=False, nullable=False):
+        print("I'm BirthDayField")
 
 
 class GenderField(object):
-    pass
+    def __init__(self, required=False, nullable=False):
+        print("I'm GenderField")
 
 
 class ClientIDsField(object):
-    pass
+    def __init__(self, required=False, nullable=False):
+        print("I'm ClientIDsField")
 
 
 class ClientsInterestsRequest(object):
@@ -111,7 +119,8 @@ def method_handler(request, ctx, store):
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
-        "method": method_handler
+        "online_score": method_handler,
+        "clients_interests": method_handler
     }
     store = None
 
@@ -134,7 +143,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             if path in self.router:
                 try:
                     response, code = self.router[path]({"body": request, "headers": self.headers}, context, self.store)
-                except Exception, e:
+                except Exception as e:
                     logging.exception("Unexpected error: %s" % e)
                     code = INTERNAL_ERROR
             else:
