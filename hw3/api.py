@@ -9,6 +9,9 @@ import hashlib
 import uuid
 from optparse import OptionParser
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from abc import ABCMeta, abstractmethod
+from dateutil.relativedelta import relativedelta
+from scoring import get_score, get_interests
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -36,52 +39,114 @@ GENDERS = {
 }
 
 
-class CharField(object):
-    def __init__(self, required=False, nullable=False):
-        print("I'm CharField")
+class BaseField(metaclass=ABCMeta):
+    def __init__(self, required, nullable=False):
+        self.required = required
+        self.nullable = nullable
+        self.printself()
 
+    def printself(self):
+        pass
+        #print(self.__class__,  'required=', self.required, 'nullable=',self.nullable)
 
-class ArgumentsField(object):
-    def __init__(self, required=False, nullable=False):
-        print("I'm ArgumentsField")
+    @abstractmethod
+    def check_validity(self, value):
+        print('Method check_validity should be implemented in child classes')
 
+class CharField(BaseField):
+    def check_validity(self, value):
+        return isinstance(value, str)
+
+class ArgumentsField(BaseField):
+    def check_validity(self, value):
+        return isinstance(value, dict)
 
 class EmailField(CharField):
-    def __init__(self, required=False, nullable=False):
-        print("I'm EmailField")
+    def check_validity(self, value):
+        return isinstance(value, str) and ('@' in value)
 
+class PhoneField(BaseField):
+    def check_validity(self, value):
+        if isinstance(value, str):
+            return value and (value[0]=='7') or (not value)
+        return isinstance(value, int)
 
-class PhoneField(object):
-    def __init__(self, required=False, nullable=False):
-        print("I'm PhoneField")
+class DateField(BaseField):
+    def check_validity(self, value):
+        if isinstance(value, str):
+            try:
+                dt = datetime.datetime.strptime(value, "%d.%m.%Y")
+                return True
+            except:
+                pass
+        return False
 
+class BirthDayField(BaseField):
+    def check_validity(self, value):
+        if isinstance(value, str):
+            try:
+                dt = datetime.datetime.strptime(value, "%d.%m.%Y")
+                difference_in_years = relativedelta(datetime.datetime.now(), dt).years
+                return difference_in_years <= 70
+            except:
+                pass
+        return False
 
-class DateField(object):
-    def __init__(self, required=False, nullable=False):
-        print("I'm DateField")
+class GenderField(BaseField):
+    def check_validity(self, value):
+        return value in [UNKNOWN, MALE, FEMALE]
 
+class ClientIDsField(BaseField):
+    def check_validity(self, value):
+        if isinstance(value, list) and value:
+            is_valid = True
+            for id in value:
+                if not isinstance(id, int):
+                    is_valid = False
+                    break
+            return is_valid
+        return False
 
-class BirthDayField(object):
-    def __init__(self, required=False, nullable=False):
-        print("I'm BirthDayField")
+class BaseMethod(metaclass=ABCMeta):
+    def __init__(self, request):
+        self.wrong_arguments = []
+        self.missed_required = []
+        self.parameters = {}
+        self.wrong_fields = []
+        for field, value in request.items():
+            if field in self.__class__.__dict__:
+                setattr(self, field, value)
+                self.parameters[field] = value
+            else:
+                self.wrong_arguments.append(field)
+        for field_name, field  in self.__class__.__dict__.items():
+            if not isinstance(field, BaseField):
+                continue
+            # check if param in request
+            field_value = getattr(self, field_name)
+            if isinstance(field_value, BaseField):
+                if field.required:
+                    self.missed_required.append(field_name)
+            else:
+                if not field.check_validity(field_value):
+                    self.wrong_fields.append(field_name)
+                    print('wrong ', field_name)
+        print('parsed ', self.wrong_arguments, self.missed_required, self.wrong_fields)
 
+    def check_request_validity(self):
+        if self.wrong_arguments:
+            return "Wrong arguments: " + ", ".join(self.wrong_arguments), INVALID_REQUEST
+        if self.missed_required:
+            return "Missed required arguments: " + ", ".join(self.missed_required), INVALID_REQUEST
+        if self.wrong_fields:
+            return "Wrong field values: " + ", ".join(self.wrong_fields), INVALID_REQUEST
+        return '', 0
 
-class GenderField(object):
-    def __init__(self, required=False, nullable=False):
-        print("I'm GenderField")
-
-
-class ClientIDsField(object):
-    def __init__(self, required=False, nullable=False):
-        print("I'm ClientIDsField")
-
-
-class ClientsInterestsRequest(object):
+class ClientsInterestsRequest(BaseMethod):
     client_ids = ClientIDsField(required=True)
     date = DateField(required=False, nullable=True)
 
-
-class OnlineScoreRequest(object):
+class OnlineScoreRequest(BaseMethod):
     first_name = CharField(required=False, nullable=True)
     last_name = CharField(required=False, nullable=True)
     email = EmailField(required=False, nullable=True)
@@ -89,8 +154,27 @@ class OnlineScoreRequest(object):
     birthday = BirthDayField(required=False, nullable=True)
     gender = GenderField(required=False, nullable=True)
 
+    def check_valid_pair(self, field1, field2):
+        if isinstance(field1, BaseField) or isinstance(field2, BaseField):
+            return False
+        return not ((field1 is None) or  (field2 is None))
 
-class MethodRequest(object):
+    def check_request_validity(self):
+        errors, error_code = super().check_request_validity()
+        if error_code:
+            return errors, error_code
+        valid_pairs = [('phone', 'email'), ('first_name', 'last_name'), ('gender', 'birthday')]
+
+        has_valid_pair = False
+        for field1, field2 in valid_pairs:
+            if self.check_valid_pair(getattr(self, field1), getattr(self, field2)):
+                has_valid_pair = True
+                break
+        if not has_valid_pair:
+            return 'No valid field pair presented', INVALID_REQUEST
+        return '', 0
+
+class MethodRequest(BaseMethod):
     account = CharField(required=False, nullable=True)
     login = CharField(required=True, nullable=True)
     token = CharField(required=True, nullable=True)
@@ -101,20 +185,57 @@ class MethodRequest(object):
     def is_admin(self):
         return self.login == ADMIN_LOGIN
 
-
 def check_auth(request):
     if request.is_admin:
-        digest = hashlib.sha512(datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).hexdigest()
+        digest = hashlib.sha512((datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode('utf-8')).hexdigest()
     else:
-        digest = hashlib.sha512(request.account + request.login + SALT).hexdigest()
+        digest = hashlib.sha512((request.account + request.login + SALT).encode('utf-8')).hexdigest()
     if digest == request.token:
         return True
     return False
 
+def online_score_handler(method_request, ctx, store):
+    print('arguments =', method_request.arguments)
+    online_score_request = OnlineScoreRequest(method_request.arguments)
+
+    error_message, error_code = online_score_request.check_request_validity()
+    if error_message:
+        return error_message, error_code
+    ctx['has'] = [key for key in online_score_request.parameters]
+    if method_request.is_admin:
+        return {'score': 42}, OK
+    return {'score': get_score(store, **online_score_request.parameters)}, OK
+
+def clients_interests_handler(method_request, ctx, store):
+    print('arguments =', method_request.arguments)
+    clients_interests_request = ClientsInterestsRequest(method_request.arguments)
+    error_message, error_code = clients_interests_request.check_request_validity()
+    if error_message:
+        return error_message, error_code
+    ctx['nclients'] = len(clients_interests_request.client_ids)
+    return { str(id): get_interests(store, id)  for id in clients_interests_request.client_ids }, OK
 
 def method_handler(request, ctx, store):
-    response, code = None, None
-    return response, code
+    print('---------------------------Start ---------------------------')
+    print('request =', request)
+    method_request = MethodRequest(request['body'])
+    error_message, error_code = method_request.check_request_validity()
+    if error_message:
+        return error_message, error_code
+
+    if not check_auth(method_request):
+        return ERRORS[FORBIDDEN], FORBIDDEN
+
+    method_router = {
+        "online_score": online_score_handler,
+        "clients_interests": clients_interests_handler
+    }
+    print('method=', method_request.method)
+    if method_request.method in method_router:
+        return method_router[method_request.method](method_request, ctx, store)
+    else:
+        return ERRORS[NOT_FOUND], NOT_FOUND
+
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
