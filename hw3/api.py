@@ -365,8 +365,9 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         request = None
         try:
             data_string = self.rfile.read(int(self.headers['Content-Length']))
-            request = json.loads(data_string)
-        except:
+            request = json.loads(data_string.decode('utf-8'))
+        except Exception as e:
+            logging.exception("Bad request error: %s" % e)
             code = BAD_REQUEST
 
         if request:
@@ -393,7 +394,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             r = {"error": response or ERRORS.get(code, "Unknown Error"), "code": code}
         context.update(r)
         logging.info(context)
-        self.wfile.write(json.dumps(r))
+        self.wfile.write(json.dumps(r).encode('utf-8'))
         return
 
 
@@ -402,7 +403,7 @@ if __name__ == "__main__":
     op.add_option("-p", "--port", action="store", type=int, default=8080)
     op.add_option("-l", "--log", action="store", default=None)
     (opts, args) = op.parse_args()
-    logging.basicConfig(filename=opts.log, level=logging.INFO,
+    logging.basicConfig(filename=opts.log, level=logging.NOTSET,
                         format='[%(asctime)s] %(levelname).1s %(message)s',
                         datefmt='%Y.%m.%d %H:%M:%S')
     server = HTTPServer(("localhost", opts.port), MainHTTPHandler)
