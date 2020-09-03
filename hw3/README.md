@@ -4,7 +4,8 @@ A small python API for calc scoring, and get client interests
 
 ## Installation
 
-Python 3.4 required.
+Python 3 required.
+Tested on Python 3.7.3
 
 ## Usage
 
