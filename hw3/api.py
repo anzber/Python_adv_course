@@ -162,8 +162,8 @@ class GenderField(BaseField):
         Check validity condition - one of fixed set
         """
         if value not in GENDER_LIST:
-            geners_str = ','.join([str(g) for g in GENDER_LIST])
-            raise ValidationError(f"{field_name}: Value is out of correct set ({geners_str})")
+            genders_str = ','.join([str(g) for g in GENDER_LIST])
+            raise ValidationError(f"{field_name}: Value is out of correct set ({genders_str})")
 
 
 class ClientIDsField(BaseField):
