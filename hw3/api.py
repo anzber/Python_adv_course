@@ -41,7 +41,13 @@ GENDERS = {
     MALE: "male",
     FEMALE: "female",
 }
+GENDER_LIST = [UNKNOWN, MALE, FEMALE]
 
+class ValidationError(Exception):
+    """
+    Error for check validation fails
+    """
+    pass
 
 class BaseField(metaclass=ABCMeta):
     """
@@ -53,7 +59,7 @@ class BaseField(metaclass=ABCMeta):
         self.nullable = nullable
 
     @abstractmethod
-    def check_validity(self, value):
+    def check_validity(self, field_name, value):
         """
         Abstract method for check if field is valid
         """
@@ -62,113 +68,118 @@ class CharField(BaseField):
     """
     Char field
     """
-    def check_validity(self, value):
+    def check_validity(self, field_name, value):
         """
         Check validity condition - value is string
         """
-        return isinstance(value, str)
+        if not isinstance(value, str):
+            raise ValidationError(f'{field_name}: value must be string')
 
 
 class ArgumentsField(BaseField):
     """
     Arguments Field
     """
-    def check_validity(self, value):
+    def check_validity(self, field_name, value):
         """
         Check validity condition - value is dict
         """
-        return isinstance(value, dict)
+        if not isinstance(value, dict):
+            raise ValidationError(f'{field_name}: value must be dict')
 
 
 class EmailField(CharField):
     """
     Email Field
     """
-    def check_validity(self, value):
+    def check_validity(self, field_name, value):
         """
         Check validity condition - value is string and has @
         """
-        return isinstance(value, str) and ('@' in value)
+        super(EmailField, self).check_validity(field_name, value)
+        if ('@' not in value):
+            raise ValidationError(f'{field_name}: value must contain @')
 
 
 class PhoneField(BaseField):
     """
     Phone Field
     """
-    def check_validity(self, value):
+    def check_validity(self, field_name, value):
         """
         Check validity condition - starts with 7, has 11 symbols
         Can be empty
         """
         if not value:
-            return True
-        if isinstance(value, (int, str)):
-            return len(str(value)) == 11 and (str(value)[0] == '7')
+            return
+        if not isinstance(value, (int, str)):
+            raise ValidationError(f'{field_name}: value must be str or int')
+        if len(str(value)) != 11:
+            raise ValidationError(f'{field_name}: the length of value should be equal to 11')
+        if str(value)[0] != '7':
+            raise ValidationError(f'{field_name}: first digit should be  7')
 
 
 class DateField(BaseField):
     """
     Date Field
     """
-    def check_validity(self, value):
+    def check_validity(self, field_name, value):
         """
         Check validity condition - any valid date with format dd.mm.yyyy
         """
-        if isinstance(value, str):
-            try:
-                datetime.datetime.strptime(value, "%d.%m.%Y")
-                return True
-            except:
-                pass
-        return False
+        if not isinstance(value, str):
+            raise ValidationError(f'{field_name}: value must be str')
+        try:
+            datetime.datetime.strptime(value, "%d.%m.%Y")
+        except:
+            raise ValidationError(f'{field_name}: wrong date format, expected format is DD.MM.YYYY')
 
 
-class BirthDayField(BaseField):
+class BirthDayField(DateField):
     """
     Birthday Field
     """
-    def check_validity(self, value):
+    def check_validity(self, field_name, value):
         """
         Check validity condition - any valid date with format dd.mm.yyyy
         No more than 70 years ago
         """
-        if isinstance(value, str):
-            try:
-                difference_in_years = relativedelta(datetime.datetime.now(),
-                                                    datetime.datetime.strptime(value, "%d.%m.%Y")).years
-                return difference_in_years <= 70
-            except:
-                pass
-        return False
+        super().check_validity(field_name, value)
+
+        difference_in_years = relativedelta(datetime.datetime.now(),
+                                            datetime.datetime.strptime(value, "%d.%m.%Y")).years
+        if difference_in_years > 70:
+            raise ValidationError(f"{field_name}: can't be earlier than 70 years ago")
 
 
 class GenderField(BaseField):
     """
     Gender Field
     """
-    def check_validity(self, value):
+    def check_validity(self, field_name, value):
         """
         Check validity condition - one of fixed set
         """
-        return value in [UNKNOWN, MALE, FEMALE]
+        if value not in GENDER_LIST:
+            raise ValidationError(f"{field_name}: Value is out of correct set ({','.join(GENDER_LIST)}) ")
 
 
 class ClientIDsField(BaseField):
     """
     Client IDs Field
     """
-    def check_validity(self, value):
+    def check_validity(self, field_name, value):
         """
         Check validity condition - list of integers
         """
-        if isinstance(value, list) and value:
-            is_valid = True
-            for client_id in value:
-                if not isinstance(client_id, int):
-                    is_valid = False
-                    break
-            return is_valid
-        return False
+        if not isinstance(value, list):
+            raise ValidationError(f'{field_name}: value must be a list')
+        if not value:
+            raise ValidationError(f'{field_name}: list can not be empty')
+        for client_id in value:
+            if not isinstance(client_id, int):
+                raise ValidationError(f'{field_name}: ID must be int')
 
 
 class BaseMethod():
@@ -176,39 +187,47 @@ class BaseMethod():
     Parent class for parsing and validating json requests
     """
     def __init__(self, request):
-        self.wrong_arguments = []
+        """
+        During init request fields shoulf are parsed and as a result we get an object
+        with fields initialized by request field values
+        :param request: dict Dictionary containing request fields
+        """
         self.missed_required = []
         self.parameters = {}
         self.wrong_fields = []
+
         for field, value in request.items():
-            if field in self.__class__.__dict__:
-                setattr(self, field, value)
-                self.parameters[field] = value
-            else:
-                self.wrong_arguments.append(field)
+            if field not in self.__class__.__dict__:
+                continue
+            setattr(self, field, value) # Seting field value to object instance
+            self.parameters[field] = value
+
+        # iterate over class fields (instance of BaseField)
         for field_name, field in self.__class__.__dict__.items():
             if not isinstance(field, BaseField):
                 continue
             # check if param in request
+            # get field of object (which has the same name as class field)
             field_value = getattr(self, field_name)
             if isinstance(field_value, BaseField):
+                #if field of object is instance of BaseField then object field doesn't exist
                 if field.required:
                     self.missed_required.append(field_name)
             else:
-                if not field.check_validity(field_value):
-                    self.wrong_fields.append(field_name)
+                try:
+                    field.check_validity(field_name, field_value)
+                except ValidationError as e:
+                    self.wrong_fields.append(str(e))
 
     def check_request_validity(self):
         """
         Common validity checking
         """
-        if self.wrong_arguments:
-            return "Wrong arguments: " + ", ".join(self.wrong_arguments), INVALID_REQUEST
         if self.missed_required:
-            return "Missed required arguments: " + ", ".join(self.missed_required), INVALID_REQUEST
+            return "Missed required arguments: " + ", ".join(self.missed_required)
         if self.wrong_fields:
-            return "Wrong field values: " + ", ".join(self.wrong_fields), INVALID_REQUEST
-        return '', 0
+            return "Wrong field values: " + ", ".join(self.wrong_fields)
+        return ''
 
 
 class ClientsInterestsRequest(BaseMethod):
@@ -243,20 +262,21 @@ class OnlineScoreRequest(BaseMethod):
             if isinstance(field1, BaseField) or isinstance(field2, BaseField):
                 return False
             return not ((field1 is None) or (field2 is None))
-
-        errors, error_code = super().check_request_validity()
-        if error_code:
-            return errors, error_code
+        print('Check online valid')
+        errors = super().check_request_validity()
+        if errors:
+            return errors
         valid_pairs = [('phone', 'email'), ('first_name', 'last_name'), ('gender', 'birthday')]
 
         has_valid_pair = False
         for field1, field2 in valid_pairs:
             if check_valid_pair(getattr(self, field1), getattr(self, field2)):
+                print('found valid pair ', field1, field2)
                 has_valid_pair = True
                 break
         if not has_valid_pair:
-            return 'No valid field pair presented', INVALID_REQUEST
-        return '', 0
+            return 'No valid field pair presented'
+        return ''
 
 
 class MethodRequest(BaseMethod):
@@ -298,9 +318,9 @@ def online_score_handler(method_request, ctx, store):
     """
     online_score_request = OnlineScoreRequest(method_request.arguments)
 
-    error_message, error_code = online_score_request.check_request_validity()
+    error_message = online_score_request.check_request_validity()
     if error_message:
-        return error_message, error_code
+        return error_message, INVALID_REQUEST
     ctx['has'] = [key for key in online_score_request.parameters]
     if method_request.is_admin:
         return {'score': 42}, OK
@@ -312,9 +332,9 @@ def clients_interests_handler(method_request, ctx, store):
     Process clientsinterests request and return response
     """
     clients_interests_request = ClientsInterestsRequest(method_request.arguments)
-    error_message, error_code = clients_interests_request.check_request_validity()
+    error_message = clients_interests_request.check_request_validity()
     if error_message:
-        return error_message, error_code
+        return error_message, INVALID_REQUEST
     ctx['nclients'] = len(clients_interests_request.client_ids)
     return {str(id): get_interests(store, id) for id in clients_interests_request.client_ids}, OK
 
@@ -323,13 +343,14 @@ def method_handler(request, ctx, store):
     """
     Common request processing and routing to specific handler
     """
+    print(request)
     method_request = MethodRequest(request['body'])
-    error_message, error_code = method_request.check_request_validity()
+    error_message = method_request.check_request_validity()
     if error_message:
-        return error_message, error_code
+        return error_message, INVALID_REQUEST
 
     if not check_auth(method_request):
-        return ERRORS[FORBIDDEN], FORBIDDEN
+        return '', FORBIDDEN
 
     method_router = {
         "online_score": online_score_handler,
@@ -337,7 +358,7 @@ def method_handler(request, ctx, store):
     }
     if method_request.method in method_router:
         return method_router[method_request.method](method_request, ctx, store)
-    return ERRORS[NOT_FOUND], NOT_FOUND
+    return '', NOT_FOUND
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
@@ -360,6 +381,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         """
         Process POST request to server
         """
+        print('POST')
         response, code = {}, OK
         context = {"request_id": self.get_request_id(self.headers)}
         request = None
@@ -371,6 +393,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             code = BAD_REQUEST
 
         if request:
+            print(request)
             path = self.path.strip("/")
             logging.info("%s: %s %s" % (self.path, data_string, context["request_id"]))
             if path in self.router:

@@ -12,6 +12,7 @@ def cases(cases):
         def wrapper(*args):
             for c in cases:
                 new_args = args + (c if isinstance(c, tuple) else (c,))
+                #print(new_args)
                 f(*new_args)
         return wrapper
     return decorator
@@ -44,9 +45,11 @@ class TestSuite(unittest.TestCase):
     ])
     def test_bad_auth(self, request):
         _, code = self.get_response(request)
+        print(_, code)
         self.assertEqual(api.FORBIDDEN, code)
 
     @cases([
+        {"account": "horns&hoofs", "login": "admin", "method": "online_score", "token": "", "arguments": {"phone": "79175002040", "email": "stupnikov@otus.ru", "gender": 1, "birthday": "01.01.1990"}},
         {"account": "horns&hoofs", "login": "h&f", "method": "online_score"},
         {"account": "horns&hoofs", "login": "h&f", "arguments": {}},
         {"account": "horns&hoofs", "method": "online_score", "arguments": {}},
@@ -54,6 +57,7 @@ class TestSuite(unittest.TestCase):
     def test_invalid_method_request(self, request):
         self.set_valid_auth(request)
         response, code = self.get_response(request)
+        print(response, code)
         self.assertEqual(api.INVALID_REQUEST, code)
         self.assertTrue(len(response))
 
