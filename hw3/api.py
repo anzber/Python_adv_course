@@ -162,7 +162,8 @@ class GenderField(BaseField):
         Check validity condition - one of fixed set
         """
         if value not in GENDER_LIST:
-            raise ValidationError(f"{field_name}: Value is out of correct set ({','.join(GENDER_LIST)}) ")
+            geners_str = ','.join([str(g) for g in GENDER_LIST])
+            raise ValidationError(f"{field_name}: Value is out of correct set ({geners_str})")
 
 
 class ClientIDsField(BaseField):
@@ -262,7 +263,6 @@ class OnlineScoreRequest(BaseMethod):
             if isinstance(field1, BaseField) or isinstance(field2, BaseField):
                 return False
             return not ((field1 is None) or (field2 is None))
-        print('Check online valid')
         errors = super().check_request_validity()
         if errors:
             return errors
@@ -271,7 +271,6 @@ class OnlineScoreRequest(BaseMethod):
         has_valid_pair = False
         for field1, field2 in valid_pairs:
             if check_valid_pair(getattr(self, field1), getattr(self, field2)):
-                print('found valid pair ', field1, field2)
                 has_valid_pair = True
                 break
         if not has_valid_pair:
@@ -343,7 +342,6 @@ def method_handler(request, ctx, store):
     """
     Common request processing and routing to specific handler
     """
-    print(request)
     method_request = MethodRequest(request['body'])
     error_message = method_request.check_request_validity()
     if error_message:
@@ -381,7 +379,6 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         """
         Process POST request to server
         """
-        print('POST')
         response, code = {}, OK
         context = {"request_id": self.get_request_id(self.headers)}
         request = None
@@ -393,7 +390,6 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             code = BAD_REQUEST
 
         if request:
-            print(request)
             path = self.path.strip("/")
             logging.info("%s: %s %s" % (self.path, data_string, context["request_id"]))
             if path in self.router:

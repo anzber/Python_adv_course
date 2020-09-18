@@ -49,7 +49,6 @@ class TestSuite(unittest.TestCase):
         self.assertEqual(api.FORBIDDEN, code)
 
     @cases([
-        {"account": "horns&hoofs", "login": "admin", "method": "online_score", "token": "", "arguments": {"phone": "79175002040", "email": "stupnikov@otus.ru", "gender": 1, "birthday": "01.01.1990"}},
         {"account": "horns&hoofs", "login": "h&f", "method": "online_score"},
         {"account": "horns&hoofs", "login": "h&f", "arguments": {}},
         {"account": "horns&hoofs", "method": "online_score", "arguments": {}},
