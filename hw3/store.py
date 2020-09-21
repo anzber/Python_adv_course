@@ -12,10 +12,15 @@ CONFIG = {
 }
 
 class TarantoolStore():
-    def __init__(self, config=None):
+
+    def __init__(self, config=None, connect_now=True):
+        if connect_now:
+            self.connect(config=config)
+
+    def connect(self, config=None):
+        self.local_cache = {}
         if config is None:
             config = CONFIG
-        self.local_cache = {}
         self.space_name = config['space']
         if config['simple_mode']:
             self.tnt = tarantool.connect(config['host'], config['port'])
@@ -32,7 +37,7 @@ class TarantoolStore():
         res = self.tnt.select(self.space_name, cid)
         if res.data:
             return res.data[0][1]['interests']
-        return res.data
+        return None
 
     def set(self, cid, interests):
         self.tnt.delete(self.space_name, cid)
@@ -42,7 +47,7 @@ class TarantoolStore():
         if key not in self.local_cache:
             return 0
         value, expire_time = self.local_cache[key]
-        if expire_time > time.time():
+        if expire_time < time.time():
             del self.local_cache[key]
             return 0
         return value

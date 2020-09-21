@@ -1,15 +1,18 @@
 import hashlib
 import json
 
-
-def get_score(store,  phone=None, email=None, birthday=None, gender=None, first_name=None, last_name=None):
+def key_from_parts(phone, birthday, first_name, last_name):
     key_parts = [
         first_name or "",
         last_name or "",
         str(phone) if phone else "",
         birthday or "",
     ]
-    key = "uid:" + hashlib.md5("".join(key_parts).encode('utf-8')).hexdigest()
+    return "uid:" + hashlib.md5("".join(key_parts).encode('utf-8')).hexdigest()
+
+
+def get_score(store,  phone=None, email=None, birthday=None, gender=None, first_name=None, last_name=None):
+    key = key_from_parts(phone=phone, birthday=birthday, first_name=first_name, last_name=last_name)
     # try get from cache,
     # fallback to heavy calculation in case of cache miss
     score = store.cache_get(key) or 0

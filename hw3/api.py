@@ -352,7 +352,15 @@ def clients_interests_handler(method_request, ctx, store):
         error_message = clients_interests_request.get_request_errors()
         return error_message, INVALID_REQUEST
     ctx['nclients'] = len(clients_interests_request.client_ids)
-    return {str(id): get_interests(store, id) for id in clients_interests_request.client_ids}, OK
+    response = {}
+    for id in clients_interests_request.client_ids:
+        interests = get_interests(store, id)
+        if interests:
+            response[str(id)] = interests
+    if response:
+        return response, OK
+    else:
+        return 'Not Found any of client ids', NOT_FOUND
 
 
 def method_handler(request, ctx, store):
