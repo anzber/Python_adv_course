@@ -16,7 +16,11 @@ python api.py
 ## Testing
 
 run docker container with Tarantool
+
 docker run --name mytarantool -p3301:3301 -d tarantool/tarantool
 
+And after that run tests:
+
 python test.py
+
 python test_integration.py
