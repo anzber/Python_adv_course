@@ -14,9 +14,8 @@ import uuid
 from optparse import OptionParser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from abc import ABCMeta, abstractmethod
-
+from dateutil.relativedelta import relativedelta
 from scoring import get_score, get_interests
-from store import TarantoolStore
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -43,13 +42,6 @@ GENDERS = {
     FEMALE: "female",
 }
 GENDER_LIST = [UNKNOWN, MALE, FEMALE]
-
-def add_years(dt, years):
-    try:
-        return dt.replace(year=dt.year + years)
-    except ValueError:
-        if (dt.month == 2) and (dt.day == 29):
-            return dt.replace(year=dt.year + years, day=28)
 
 class ValidationError(Exception):
     """
@@ -139,8 +131,7 @@ class DateField(BaseField):
         if not isinstance(value, str):
             raise ValidationError(f'{field_name}: value must be str')
         try:
-            if value:
-                datetime.datetime.strptime(value, "%d.%m.%Y")
+            datetime.datetime.strptime(value, "%d.%m.%Y")
         except:
             raise ValidationError(f'{field_name}: wrong date format, expected format is DD.MM.YYYY')
 
@@ -155,14 +146,12 @@ class BirthDayField(DateField):
         No more than 70 years ago
         """
         super().check_validity(field_name, value)
-        if not value:
-            return
-        date_birthday = datetime.datetime.strptime(value, "%d.%m.%Y")
-        date_70years_before = add_years(datetime.datetime.now(), -70)
-        if date_birthday < date_70years_before:
+
+        difference_in_years = relativedelta(datetime.datetime.now(),
+                                            datetime.datetime.strptime(value, "%d.%m.%Y")).years
+        if difference_in_years > 70:
             raise ValidationError(f"{field_name}: can't be earlier than 70 years ago")
-        if datetime.datetime.now() < date_birthday:
-            raise ValidationError(f"{field_name}: can't be in the future")
+
 
 class GenderField(BaseField):
     """
@@ -214,8 +203,6 @@ class BaseMethod():
             setattr(self, field, value) # Seting field value to object instance
             self.parameters[field] = value
 
-
-    def check_request_validity(self):
         # iterate over class fields (instance of BaseField)
         for field_name, field in self.__class__.__dict__.items():
             if not isinstance(field, BaseField):
@@ -232,9 +219,8 @@ class BaseMethod():
                     field.check_validity(field_name, field_value)
                 except ValidationError as e:
                     self.wrong_fields.append(str(e))
-        return not (self.wrong_fields or self.missed_required)
 
-    def get_request_errors(self):
+    def check_request_validity(self):
         """
         Common validity checking
         """
@@ -243,6 +229,7 @@ class BaseMethod():
         if self.wrong_fields:
             return "Wrong field values: " + ", ".join(self.wrong_fields)
         return ''
+
 
 class ClientsInterestsRequest(BaseMethod):
     """
@@ -276,22 +263,17 @@ class OnlineScoreRequest(BaseMethod):
             if isinstance(field1, BaseField) or isinstance(field2, BaseField):
                 return False
             return not ((field1 is None) or (field2 is None))
-
-        if not super().check_request_validity():
-            return False
-        valid_pairs = [('phone', 'email'), ('first_name', 'last_name'), ('gender', 'birthday')]
-        self.has_valid_pair = False
-        for field1, field2 in valid_pairs:
-            if check_valid_pair(getattr(self, field1), getattr(self, field2)):
-                self.has_valid_pair = True
-                break
-        return self.has_valid_pair
-
-    def get_request_errors(self):
-        errors = super().get_request_errors()
+        errors = super().check_request_validity()
         if errors:
             return errors
-        if not self.has_valid_pair:
+        valid_pairs = [('phone', 'email'), ('first_name', 'last_name'), ('gender', 'birthday')]
+
+        has_valid_pair = False
+        for field1, field2 in valid_pairs:
+            if check_valid_pair(getattr(self, field1), getattr(self, field2)):
+                has_valid_pair = True
+                break
+        if not has_valid_pair:
             return 'No valid field pair presented'
         return ''
 
@@ -334,8 +316,9 @@ def online_score_handler(method_request, ctx, store):
     Process onlinescore request and return response
     """
     online_score_request = OnlineScoreRequest(method_request.arguments)
-    if not online_score_request.check_request_validity():
-        error_message = online_score_request.get_request_errors()
+
+    error_message = online_score_request.check_request_validity()
+    if error_message:
         return error_message, INVALID_REQUEST
     ctx['has'] = [key for key in online_score_request.parameters]
     if method_request.is_admin:
@@ -348,8 +331,8 @@ def clients_interests_handler(method_request, ctx, store):
     Process clientsinterests request and return response
     """
     clients_interests_request = ClientsInterestsRequest(method_request.arguments)
-    if not clients_interests_request.check_request_validity():
-        error_message = clients_interests_request.get_request_errors()
+    error_message = clients_interests_request.check_request_validity()
+    if error_message:
         return error_message, INVALID_REQUEST
     ctx['nclients'] = len(clients_interests_request.client_ids)
     return {str(id): get_interests(store, id) for id in clients_interests_request.client_ids}, OK
@@ -360,8 +343,8 @@ def method_handler(request, ctx, store):
     Common request processing and routing to specific handler
     """
     method_request = MethodRequest(request['body'])
-    if not method_request.check_request_validity():
-        error_message = method_request.get_request_errors()
+    error_message = method_request.check_request_validity()
+    if error_message:
         return error_message, INVALID_REQUEST
 
     if not check_auth(method_request):
@@ -384,7 +367,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         "online_score": method_handler,
         "clients_interests": method_handler
     }
-    store = TarantoolStore()
+    store = None
 
     def get_request_id(self, headers):
         """
